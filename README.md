@@ -23,20 +23,14 @@ Semua request web dari perangkat (PC, HP, laptop) akan melewati Squid di X96Mini
 Transfer script installer ke X96Mini:
 
 ```bash
-scp install-squid.sh root@192.168.101.22:/tmp/
-```
-
-SSH ke X96Mini:
-
-```bash
-ssh root@192.168.101.22
+curl -O https://raw.githubusercontent.com/budijoi/squid-stb/main/install-squid.sh
 ```
 
 Jalankan installer:
 
 ```bash
-chmod +x /tmp/install-squid.sh
-sudo bash /tmp/install-squid.sh
+chmod +x install-squid.sh
+sudo bash ./install-squid.sh
 ```
 
 Installer akan:

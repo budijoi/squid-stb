@@ -1,5 +1,6 @@
 #!/bin/bash
-# Squid Caching Proxy Auto-Installer for Armbian (X96Mini)
+# Squid Caching Proxy Auto-Installer for Armbian
+# Repo: https://github.com/budijoi/squid-stb
 # Usage: sudo bash install-squid.sh
 
 RED='\033[0;31m'
@@ -36,16 +37,11 @@ show_progress() {
     bar=$(printf "${GREEN}%${filled}s${NC}" | tr ' ' '█')
     bar+=$(printf "${DIM}%${empty}s${NC}" | tr ' ' '░')
     echo -ne "\r${CYAN}${BOLD}[${NC}${bar}${CYAN}${BOLD}] ${pct}%${NC} ${1}"
-    if [ "$CUR_STEP" -eq "$TOTAL_STEPS" ]; then
-        echo ""
-    fi
+    [ "$CUR_STEP" -eq "$TOTAL_STEPS" ] && echo ""
 }
 
 spinner() {
-    local pid=$1
-    local msg=$2
-    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    local i=0
+    local pid=$1 msg=$2 spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0
     while kill -0 "$pid" 2>/dev/null; do
         printf "\r${CYAN}%c${NC} %s" "${spin:$i:1}" "$msg"
         i=$(( (i + 1) % 10 ))
@@ -55,13 +51,10 @@ spinner() {
 }
 
 run_spinner() {
-    local msg=$1
-    shift
+    local msg=$1; shift
     ("$@" > /dev/null 2>&1) &
-    local pid=$!
-    spinner "$pid" "$msg"
-    wait "$pid"
-    return $?
+    spinner $! "$msg"
+    wait $!
 }
 
 # === BANNER ===
@@ -74,7 +67,7 @@ echo -e "  ${CYAN}║${NC}  ${BOLD}${MAGENTA}▀▐▄▄▄▄▄▄▄▄▄�
 echo -e "  ${CYAN}╚═══════════════════════════════════════════╝${NC}"
 echo ""
 
-# === DETEKSI SISTEM ===
+# === SISTEM INFO ===
 echo -e "${BLUE}${BOLD}━━━ SYSTEM INFORMATION ━━━${NC}"
 echo -e "  ${DIM}Hostname :${NC} $(hostname)"
 echo -e "  ${DIM}Kernel   :${NC} $(uname -r)"
@@ -83,21 +76,18 @@ echo -e "  ${DIM}Memory   :${NC} $(free -h | awk '/^Mem:/ {print $2}')"
 echo -e "  ${DIM}Disk     :${NC} $(df -h / | awk 'NR==2 {print $4}') free"
 echo ""
 
-# === PRE-FLIGHT CHECKS ===
+# === PRE-FLIGHT ===
 echo -e "${BLUE}${BOLD}━━━ PRE-FLIGHT CHECKS ━━━${NC}"
 
-# Detect LAN
 IFACE=$(ip route get 8.8.8.8 2>/dev/null | awk '{print $5; exit}')
 IP_ADDR=$(ip addr show "$IFACE" 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
-SUBNET=$(ip route 2>/dev/null | grep -E "link src $IP_ADDR|$IFACE.*proto kernel" | grep -oP '\d+\.\d+\.\d+\.\d+/\d+' | head -1)
-[ -z "$SUBNET" ] && SUBNET=$(ip route 2>/dev/null | grep "$IFACE" | grep -oP '\d+\.\d+\.\d+\.\d+/\d+' | head -1)
-[ -z "$SUBNET" ] && SUBNET="192.168.1.0/24"
+SUBNET=$(ip route 2>/dev/null | grep -oP "${IP_ADDR%.[0-9]*}\.\d+/\d+" | head -1)
+[ -z "$SUBNET" ] && SUBNET="$(echo $IP_ADDR | sed 's/\.[0-9]*$/.0\/24/')"
 
 echo -e "  ${DIM}Interface :${NC} $IFACE"
 echo -e "  ${DIM}IP Address:${NC} ${GREEN}$IP_ADDR${NC}"
 echo -e "  ${DIM}Subnet LAN :${NC} $SUBNET"
 
-# Internet check
 echo -ne "  ${DIM}Internet  :${NC} "
 if ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
     echo -e "${GREEN}Connected${NC}"
@@ -107,7 +97,7 @@ else
 fi
 echo ""
 
-# === DETEKSI SQUID EXISTING ===
+# === SQUID STATUS ===
 echo -e "${BLUE}${BOLD}━━━ SQUID STATUS ━━━${NC}"
 
 SQUID_INSTALLED=false
@@ -117,54 +107,46 @@ SQUID_LATEST=""
 
 if command -v squid &> /dev/null; then
     SQUID_INSTALLED=true
-    SQUID_VERSION=$(squid -v 2>/dev/null | head -1 | grep -oP 'Version \K[0-9.]+')
-    if systemctl is-active --quiet squid 2>/dev/null; then
-        SQUID_RUNNING=true
-    fi
+    SQUID_VERSION=$(squid -v 2>/dev/null | grep -oP 'Version \K[0-9.]+')
+    systemctl is-active --quiet squid 2>/dev/null && SQUID_RUNNING=true
     echo -e "  ${DIM}Terinstal :${NC} Squid ${GREEN}$SQUID_VERSION${NC}"
     echo -e "  ${DIM}Running   :${NC} $([ "$SQUID_RUNNING" = true ] && echo "${GREEN}● Yes${NC}" || echo "${RED}○ No${NC}")"
 else
     echo -e "  ${DIM}Terinstal :${NC} ${YELLOW}Belum terinstal${NC}"
 fi
 
-# Ambil versi repo
-APT_UPDATE_DONE=false
-
-get_latest_version() {
-    if [ "$APT_UPDATE_DONE" = false ]; then
-        apt update -qq 2>/dev/null
-        APT_UPDATE_DONE=true
-    fi
-    apt-cache policy squid 2>/dev/null | grep Candidate | awk '{print $2}'
-}
-
+# Cek versi repo
 echo -ne "  ${DIM}Mengecek repo${NC} "
-SQUID_LATEST=$(get_latest_version)
+apt update -qq 2>/dev/null
+SQUID_LATEST=$(apt-cache show squid 2>/dev/null | grep "^Version:" | head -1 | awk '{print $2}')
+sleep 0.3
 echo -e "\r  ${DIM}Repo terbaru:${NC} Squid ${CYAN}$SQUID_LATEST${NC}"
 
 # === MENU AKSI ===
 NEED_FRESH=false
 DO_INSTALL=true
-DO_CONFIGURE=true
 
 if [ "$SQUID_INSTALLED" = true ]; then
-    if [ "$SQUID_VERSION" != "$SQUID_LATEST" ] && [ -n "$SQUID_LATEST" ]; then
+    # Bandingkan versi major.minor.patch
+    VER_CUR=$(echo "$SQUID_VERSION" | awk -F. '{printf "%d%03d%03d", $1,$2,$3}')
+    VER_REPO=$(echo "$SQUID_LATEST" | awk -F. '{printf "%d%03d%03d", $1,$2,$3}')
+
+    if [ "$VER_CUR" -lt "$VER_REPO" ] 2>/dev/null; then
         echo ""
         echo -e "  ${YELLOW}${BOLD}⚠  Versi squid di system (${SQUID_VERSION}) lebih lama dari repo (${SQUID_LATEST}).${NC}"
         echo ""
         echo -e "  ${BOLD}Pilih tindakan:${NC}"
         echo -e "    ${CYAN}[1]${NC} ${GREEN}Update${NC} Squid ke versi terbaru"
         echo -e "    ${CYAN}[2]${NC} ${RED}Hapus${NC} Squid total dari system"
-        echo -e "    ${CYAN}[3]${NC} ${YELLOW}Fresh Install${NC} (hapus + install ulang dengan konfigurasi baru)"
-        echo -e "    ${CYAN}[4]${NC} ${DIM}Lewati${NC} — konfigurasi ulang saja, tanpa update"
+        echo -e "    ${CYAN}[3]${NC} ${YELLOW}Fresh Install${NC} (hapus + install ulang)"
+        echo -e "    ${CYAN}[4]${NC} ${DIM}Lewati${NC} — konfigurasi ulang saja"
         echo ""
-        read -p "  $(echo -e ${CYAN})▶${NC} Masukkan pilihan [1-4]: " action_choice
+        read -p "$(echo -e "  ${CYAN}▶${NC} Masukkan pilihan [1-4]: ")" action_choice
 
         case $action_choice in
             1)
-                echo -e "  ${GREEN}→ Update Squid ke versi $SQUID_LATEST...${NC}"
+                echo -e "  ${GREEN}→ Update Squid ke $SQUID_LATEST...${NC}"
                 run_spinner "Mengupdate Squid" apt install --only-upgrade squid -y
-                DO_CONFIGURE=true
                 ;;
             2)
                 echo -e "  ${RED}→ Menghapus Squid...${NC}"
@@ -177,98 +159,58 @@ if [ "$SQUID_INSTALLED" = true ]; then
                 exit 0
                 ;;
             3)
-                echo -e "  ${YELLOW}→ Fresh Install: menghapus squid lama...${NC}"
+                echo -e "  ${YELLOW}→ Fresh Install...${NC}"
                 systemctl stop squid 2>/dev/null || true
                 run_spinner "Menghapus squid lama" apt remove --purge squid -y
                 run_spinner "Membersihkan" apt autoremove -y
                 rm -rf /var/spool/squid /var/log/squid /etc/squid/squid.conf
                 NEED_FRESH=true
-                echo -e "  ${GREEN}→ Menginstall squid baru...${NC}"
                 ;;
-            4)
-                echo -e "  ${DIM}→ Melewati update. Konfigurasi ulang saja.${NC}"
+            4|*)
+                echo -e "  ${DIM}→ Melewati update.${NC}"
                 DO_INSTALL=false
-                DO_CONFIGURE=true
-                ;;
-            *)
-                echo -e "  ${RED}Pilihan tidak valid. Melanjutkan dengan konfigurasi ulang.${NC}"
-                DO_INSTALL=false
-                DO_CONFIGURE=true
                 ;;
         esac
     else
         echo -e "  ${GREEN}${BOLD}✓ Squid sudah versi terbaru.${NC}"
-        if [ "$SQUID_RUNNING" = true ]; then
-            echo -e "  ${GREEN}● Service sudah berjalan.${NC}"
-            DO_INSTALL=false
-        else
-            echo -e "  ${YELLOW}○ Service belum berjalan. Akan di-start.${NC}"
-            DO_INSTALL=false
-            DO_CONFIGURE=true
-        fi
+        DO_INSTALL=false
     fi
 fi
 
 echo ""
 
-# === INSTALASI ===
-STEPS_CONFIG=7
-
+# === INSTALL ===
 if [ "$DO_INSTALL" = true ] || [ "$NEED_FRESH" = true ]; then
     echo -e "${BLUE}${BOLD}━━━ INSTALLATION ━━━${NC}"
-    init_progress 4
-
-    (
-        apt install -y squid > /dev/null 2>&1
-    ) &
-    spinner $! "Menginstall Squid..."
-    show_progress "Installasi selesai"
-    sleep 0.3
-
-    # Fix: hapus dns_order jika ada dari template lama
-    squid -k parse 2>/dev/null | grep -q "unrecognized.*dns_order" && \
-        sed -i '/^dns_order/d' /etc/squid/squid.conf 2>/dev/null || true
-    show_progress "Validasi konfigurasi"
-    sleep 0.3
+    run_spinner "Menginstall Squid" apt install -y squid
+    echo ""
 fi
 
+# === KONFIGURASI ===
 echo -e "${BLUE}${BOLD}━━━ CONFIGURATION ━━━${NC}"
-init_progress $STEPS_CONFIG
+init_progress 6
 
-# Backup config lama
-if [ -f /etc/squid/squid.conf ]; then
-    BACKUP_FILE="/etc/squid/squid.conf.bak.$(date +%Y%m%d%H%M%S)"
-    cp /etc/squid/squid.conf "$BACKUP_FILE"
-    show_progress "Backup config → $BACKUP_FILE"
-    sleep 0.2
-else
-    show_progress "Tidak ada config lama untuk di-backup"
-    sleep 0.2
-fi
+[ -f /etc/squid/squid.conf ] && \
+    cp /etc/squid/squid.conf "/etc/squid/squid.conf.bak.$(date +%Y%m%d%H%M%S)"
+show_progress "Backup config"
 
-# Tulis konfigurasi baru
-show_progress "Menulis konfigurasi baru..."
-sleep 0.3
-cat > /etc/squid/squid.conf << 'EOF'
+show_progress "Menulis konfigurasi baru"
+
+cat > /etc/squid/squid.conf << EOF
 # === Auto-generated Squid Config ===
-EOF
-echo "# LAN: $SUBNET | IP: $IP_ADDR" >> /etc/squid/squid.conf
-cat >> /etc/squid/squid.conf << 'EOF'
+# Repo: https://github.com/budijoi/squid-stb
+# LAN: $SUBNET | IP: $IP_ADDR
 
-# ACL subnet lokal
 acl localnet src 0.0.0.1-0.255.255.255
 acl localnet src 10.0.0.0/8
 acl localnet src 100.64.0.0/10
 acl localnet src 169.254.0.0/16
 acl localnet src 172.16.0.0/12
 acl localnet src 192.168.0.0/16
+acl localnet src $SUBNET
 acl localnet src fc00::/7
 acl localnet src fe80::/10
-EOF
-echo "acl localnet src $SUBNET" >> /etc/squid/squid.conf
-cat >> /etc/squid/squid.conf << 'EOF'
 
-# Port aman
 acl SSL_ports port 443
 acl Safe_ports port 80
 acl Safe_ports port 21
@@ -291,72 +233,59 @@ http_access deny to_linklocal
 http_access allow localnet
 http_access deny all
 
-# Port proxy
 http_port 3128
 
-# Cache settings
 cache_mem 256 MB
 maximum_object_size_in_memory 512 KB
 minimum_object_size 0 KB
 maximum_object_size 64 MB
 cache_dir ufs /var/spool/squid 2048 16 256
 
-# DNS
-dns_nameservers 1.1.1.1 8.8.8.8
-
-# Performance
 memory_replacement_policy heap GDSF
 cache_replacement_policy heap LFUDA
 
-# Logging
 access_log daemon:/var/log/squid/access.log squid
 cache_log /var/log/squid/cache.log
 coredump_dir /var/spool/squid
 
-# Refresh pattern
 refresh_pattern ^ftp:           1440    20%     10080
 refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
 refresh_pattern .               0       20%     4320
 EOF
 
 show_progress "Membuat direktori cache & log"
-sleep 0.2
 mkdir -p /var/log/squid
 chown proxy:proxy /var/log/squid 2>/dev/null || true
 
 show_progress "Inisialisasi cache"
 squid -z > /dev/null 2>&1 || true
 
-show_progress "Memulai service Squid"
+show_progress "Memulai service"
 systemctl restart squid 2>/dev/null || systemctl start squid 2>/dev/null || true
-
-show_progress "Mengaktifkan auto-start"
 systemctl enable squid 2>/dev/null || true
 
-show_progress "Firewall: membuka port 3128"
+show_progress "Firewall port 3128"
 if command -v ufw &> /dev/null; then
     ufw allow 3128/tcp comment 'Squid Proxy' > /dev/null 2>&1 || true
 fi
 
-# === FINAL ===
+# === VERIFIKASI ===
 echo ""
 echo -e "${BLUE}${BOLD}━━━ VERIFICATION ━━━${NC}"
 sleep 1
 
 if systemctl is-active --quiet squid 2>/dev/null; then
-    CACHE_DIR_SIZE=$(du -sh /var/spool/squid 2>/dev/null | awk '{print $1}')
+    CACHE_SIZE=$(du -sh /var/spool/squid 2>/dev/null | awk '{print $1}')
     echo -e "  ${GREEN}${BOLD}●${NC} ${GREEN}Service  :${NC} ${BOLD}Running${NC} ${GREEN}✓${NC}"
     echo -e "  ${DIM}  Proxy    :${NC} ${CYAN}http://$IP_ADDR:3128${NC}"
-    echo -e "  ${DIM}  Cache    :${NC} $CACHE_DIR_SIZE / 2.0G"
-    echo ""
+    echo -e "  ${DIM}  Cache    :${NC} $CACHE_SIZE / 2.0G"
 
-    # Tes proxy lokal
     echo -ne "  ${DIM}  Test     :${NC} "
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 --proxy http://127.0.0.1:3128 http://example.com 2>/dev/null)
-    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ]; then
-        echo -e "${GREEN}✓ Proxy berfungsi (HTTP $HTTP_CODE)${NC}"
+    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ] || [ "$HTTP_CODE" = "304" ]; then
+        echo -e "${GREEN}✓ Proxy OK (HTTP $HTTP_CODE)${NC}"
     else
-        echo -e "${YELLOW}⚠ Proxy merespon tapi tidak dapat mengakses web (kode: $HTTP_CODE)${NC}"
+        echo -e "${YELLOW}⚠ Proxy respon ${HTTP_CODE} — cek log: sudo journalctl -u squid -n 20${NC}"
     fi
 
     echo ""
@@ -364,30 +293,24 @@ if systemctl is-active --quiet squid 2>/dev/null; then
     echo -e "  ${GREEN}${BOLD}       INSTALASI BERHASIL!${NC}"
     echo -e "  ${GREEN}${BOLD}══════════════════════════════════════════════${NC}"
     echo ""
-    echo -e "  ${BOLD}☕ Setting Proxy di Perangkat Lain:${NC}"
-    echo -e "    ${DIM}Address:${NC} ${CYAN}$IP_ADDR${NC}"
-    echo -e "    ${DIM}Port   :${NC} ${CYAN}3128${NC}"
+    echo -e "  ${BOLD}Setting Proxy di Perangkat Lain:${NC}"
+    echo -e "    ${DIM}Address:${NC} ${CYAN}$IP_ADDR${NC}   ${DIM}Port:${NC} ${CYAN}3128${NC}"
     echo ""
-    echo -e "  ${BOLD}☕ Perintah Berguna:${NC}"
-    echo -e "    ${DIM}Cek status :${NC} sudo systemctl status squid"
-    echo -e "    ${DIM}Cek log    :${NC} sudo tail -f /var/log/squid/access.log"
-    echo -e "    ${DIM}Restart    :${NC} sudo systemctl restart squid"
-    echo -e "    ${DIM}Cek cache  :${NC} sudo squid -k info"
-    echo ""
-    echo -e "  ${BOLD}☕ Tes dari Windows (PowerShell):${NC}"
-    echo -e "    ${DIM}PS >${NC} curl.exe -I --proxy http://$IP_ADDR:3128 https://google.com"
+    echo -e "  ${BOLD}Perintah:${NC}"
+    echo -e "    ${DIM}Status :${NC} sudo systemctl status squid"
+    echo -e "    ${DIM}Log    :${NC} sudo tail -f /var/log/squid/access.log"
+    echo -e "    ${DIM}Restart:${NC} sudo systemctl restart squid"
     echo ""
     echo -e "  ${CYAN}╔═══════════════════════════════════════╗${NC}"
-    echo -e "  ${CYAN}║${NC}  ${YELLOW}Selamat!  X96Mini kamu sekarang${NC}    ${CYAN}║${NC}"
-    echo -e "  ${CYAN}║${NC}  ${YELLOW}adalah caching proxy server!${NC}       ${CYAN}║${NC}"
+    echo -e "  ${CYAN}║${NC}  ${YELLOW}X96Mini sekarang adalah${NC}           ${CYAN}║${NC}"
+    echo -e "  ${CYAN}║${NC}  ${YELLOW}caching proxy server!${NC}              ${CYAN}║${NC}"
     echo -e "  ${CYAN}╚═══════════════════════════════════════╝${NC}"
     echo ""
 else
     echo -e "  ${RED}${BOLD}●${NC} ${RED}Service : GAGAL${NC}"
     echo ""
-    echo -e "  ${YELLOW}Diagnosa cepat:${NC}"
+    echo -e "  ${YELLOW}Diagnosa:${NC}"
     echo -e "    ${DIM}1.${NC} sudo journalctl -u squid --no-pager -n 30"
     echo -e "    ${DIM}2.${NC} sudo squid -N -d1"
-    echo -e "    ${DIM}3.${NC} sudo ls -la /var/log/squid/"
     exit 1
 fi

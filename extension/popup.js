@@ -2,8 +2,8 @@
 
 const C = {
   ls: (k, v) => { if (v !== undefined) { localStorage.setItem(k, v); return } return localStorage.getItem(k) },
-  $(s, p) => (p || document).querySelector(s),
-  $$(s, p) => (p || document).querySelectorAll(s)
+  $: (s, p) => (p || document).querySelector(s),
+  $$: (s, p) => (p || document).querySelectorAll(s)
 };
 
 const serverInput = C.$('#serverInput');

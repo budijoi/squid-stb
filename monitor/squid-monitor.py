@@ -3,9 +3,12 @@
 # Run: python3 squid-monitor.py
 # Repo: https://github.com/budijoi/squid-stb
 
-import os, sys, json, time, threading, re, struct, zlib
+import os, sys, json, time, threading, re, struct, zlib, logging
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+log = logging.getLogger("squid-monitor")
 
 ACCESS_LOG = "/var/log/squid/access.log"
 HOST = "0.0.0.0"
@@ -43,53 +46,66 @@ def domain_of(url):
 
 
 def tail():
-    while not os.path.exists(ACCESS_LOG):
-        time.sleep(2)
-    with open(ACCESS_LOG, "r") as f:
-        f.seek(0, 2)
-        while True:
-            line = f.readline()
-            if not line:
-                time.sleep(0.3)
+    while True:
+        try:
+            if not os.path.exists(ACCESS_LOG):
+                log.warning("access.log belum ada, menunggu 5 detik...")
+                time.sleep(5)
                 continue
-            m = LOG_RE.match(line)
-            if not m:
-                continue
-            ts, dur, cli, res, st, sz, meth, url = (
-                float(m.group(1)), int(m.group(2)), m.group(3),
-                m.group(4), int(m.group(5)), int(m.group(6)),
-                m.group(7), m.group(8)
-            )
-            with lock:
-                stats["total"] += 1
+            f = open(ACCESS_LOG, "r")
+            break
+        except PermissionError:
+            log.error("Tidak bisa membaca %s — izin ditolak. Jalankan monitor sebagai user yang tepat.", ACCESS_LOG)
+            time.sleep(10)
+        except Exception as e:
+            log.error("Gagal membuka access.log: %s", e)
+            time.sleep(10)
+    log.info("Memantau %s", ACCESS_LOG)
+    f.seek(0, 2)
+    while True:
+        line = f.readline()
+        if not line:
+            time.sleep(0.3)
+            continue
+        m = LOG_RE.match(line)
+        if not m:
+            log.debug("Baris tidak cocok dengan regex: %s", line.rstrip())
+            continue
+        ts, dur, cli, res, st, sz, meth, url = (
+            float(m.group(1)), int(m.group(2)), m.group(3),
+            m.group(4), int(m.group(5)), int(m.group(6)),
+            m.group(7), m.group(8)
+        )
+        with lock:
+            stats["total"] += 1
+            if "HIT" in res:
+                stats["hits"] += 1
+            elif res == "TCP_MISS":
+                stats["misses"] += 1
+            elif res == "TCP_TUNNEL":
+                stats["tunnels"] += 1
+            elif res in ("TCP_DENIED", "TCP_REFRESH_FAIL"):
+                stats["denied"] += 1
+            elif res.startswith("ERR_"):
+                stats["errors"] += 1
+            else:
+                stats["other"] += 1
+
+            recent.insert(0, {
+                "time": time.strftime("%H:%M:%S", time.localtime(ts)),
+                "method": meth, "url": url[:90],
+                "result": res, "status": st,
+                "size": sz, "ms": dur
+            })
+            if len(recent) > MAX_RECENT:
+                recent.pop()
+
+            dom = domain_of(url)
+            if dom:
+                d = domains.setdefault(dom, {"total": 0, "hits": 0})
+                d["total"] += 1
                 if "HIT" in res:
-                    stats["hits"] += 1
-                elif res == "TCP_MISS":
-                    stats["misses"] += 1
-                elif res == "TCP_TUNNEL":
-                    stats["tunnels"] += 1
-                elif res in ("TCP_DENIED", "TCP_REFRESH_FAIL"):
-                    stats["denied"] += 1
-                elif res.startswith("ERR_"):
-                    stats["errors"] += 1
-                else:
-                    stats["other"] += 1
-
-                recent.insert(0, {
-                    "time": time.strftime("%H:%M:%S", time.localtime(ts)),
-                    "method": meth, "url": url[:90],
-                    "result": res, "status": st,
-                    "size": sz, "ms": dur
-                })
-                if len(recent) > MAX_RECENT:
-                    recent.pop()
-
-                dom = domain_of(url)
-                if dom:
-                    d = domains.setdefault(dom, {"total": 0, "hits": 0})
-                    d["total"] += 1
-                    if "HIT" in res:
-                        d["hits"] += 1
+                    d["hits"] += 1
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -135,17 +151,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
 
-    def log_message(self, *a):
-        pass
+    def log_message(self, fmt, *a):
+        log.info(fmt % a)
 
 
 def main():
     threading.Thread(target=tail, daemon=True).start()
     srv = HTTPServer((HOST, PORT), Handler)
-    print(f"Squid Monitor API → http://{HOST}:{PORT}")
-    print(f"  /api/stats    — cache statistics")
-    print(f"  /api/recent   — recent requests")
-    print(f"  /api/domains  — top domains")
+    log.info("Squid Monitor API → http://%s:%s", HOST, PORT)
+    log.info("  /api/stats    — cache statistics")
+    log.info("  /api/recent   — recent requests")
+    log.info("  /api/domains  — top domains")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -27,7 +27,7 @@ const recentList = C.$('#recentList');
 const domainList = C.$('#domainList');
 const lastUpdate = C.$('#lastUpdate');
 
-let server = C.ls('server') || '192.168.101.22:3128';
+let server = C.ls('server') || '192.168.101.22:8080';
 let pollTimer = null;
 
 serverInput.value = server;

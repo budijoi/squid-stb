@@ -43,8 +43,9 @@ Type=simple
 ExecStart=/usr/local/bin/squid-monitor
 Restart=always
 RestartSec=3
-User=nobody
-Group=nogroup
+# Monitor perlu membaca /var/log/squid/access.log — jalankan sebagai root
+User=root
+Group=root
 
 [Install]
 WantedBy=multi-user.target

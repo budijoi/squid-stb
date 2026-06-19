@@ -62,8 +62,8 @@ clear
 echo ""
 echo -e "  ${CYAN}╔═══════════════════════════════════════════╗${NC}"
 echo -e "  ${CYAN}║${NC}  ${BOLD}${MAGENTA}░▀▐▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▌▀░${NC}  ${BOLD}${YELLOW}SQUID CACHE PROXY${NC}     ${CYAN}║${NC}"
-echo -e "  ${CYAN}║${NC}  ${BOLD}${MAGENTA}▄█▓▒░SQUID░▒▓█▄${NC}       ${BOLD}${YELLOW}Auto Installer${NC}   ${CYAN}║${NC}"
-echo -e "  ${CYAN}║${NC}  ${BOLD}${MAGENTA}▀▐▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▌▀${NC}  ${BOLD}${YELLOW}for Armbian${NC}        ${CYAN}║${NC}"
+echo -e "  ${CYAN}║${NC}  ${BOLD}${MAGENTA}▄█▓▒░SQUID░▒▓█▄${NC}       ${BOLD}${YELLOW}For Armbian${NC}   ${CYAN}║${NC}"
+echo -e "  ${CYAN}║${NC}  ${BOLD}${MAGENTA}▀▐▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▌▀${NC}  ${BOLD}${YELLOW}by budijoi${NC}        ${CYAN}║${NC}"
 echo -e "  ${CYAN}╚═══════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -77,7 +77,7 @@ echo -e "  ${DIM}Disk     :${NC} $(df -h / | awk 'NR==2 {print $4}') free"
 echo ""
 
 # === PRE-FLIGHT ===
-echo -e "${BLUE}${BOLD}━━━ PRE-FLIGHT CHECKS ━━━${NC}"
+echo -e "${BLUE}${BOLD}━━━ PRE-INSTALL CHECKS ━━━${NC}"
 
 IFACE=$(ip route get 8.8.8.8 2>/dev/null | awk '{print $5; exit}')
 IP_ADDR=$(ip addr show "$IFACE" 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
@@ -93,7 +93,7 @@ if ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
     echo -e "${GREEN}Connected${NC}"
 else
     echo -e "${RED}No connection${NC}"
-    echo -e "  ${YELLOW}⚠ Pastikan X96Mini terhubung ke internet.${NC}"
+    echo -e "  ${YELLOW}⚠ Pastikan STB terhubung ke internet.${NC}"
 fi
 echo ""
 
@@ -302,7 +302,7 @@ if systemctl is-active --quiet squid 2>/dev/null; then
     echo -e "    ${DIM}Restart:${NC} sudo systemctl restart squid"
     echo ""
     echo -e "  ${CYAN}╔═══════════════════════════════════════╗${NC}"
-    echo -e "  ${CYAN}║${NC}  ${YELLOW}X96Mini sekarang adalah${NC}           ${CYAN}║${NC}"
+    echo -e "  ${CYAN}║${NC}  ${YELLOW}STB sekarang adalah${NC}           ${CYAN}║${NC}"
     echo -e "  ${CYAN}║${NC}  ${YELLOW}caching proxy server!${NC}              ${CYAN}║${NC}"
     echo -e "  ${CYAN}╚═══════════════════════════════════════╝${NC}"
     echo ""

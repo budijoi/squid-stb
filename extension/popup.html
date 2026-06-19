@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Squid Monitor</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,'Segoe UI',system-ui,sans-serif}
+body{width:420px;background:#0f172a;color:#e2e8f0;overflow-x:hidden}
+.header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#1e293b;border-bottom:1px solid #334155}
+.header h1{font-size:15px;font-weight:700;color:#38bdf8;display:flex;align-items:center;gap:8px}
+.header h1::before{content:'';display:inline-block;width:10px;height:10px;border-radius:50%}
+.header h1.on::before{background:#22c55e;box-shadow:0 0 8px #22c55e88}
+.header h1.off::before{background:#ef4444;box-shadow:0 0 8px #ef444488}
+.settings{display:flex;align-items:center;gap:8px}
+.settings label{font-size:11px;color:#94a3b8}
+.settings input{width:80px;padding:4px 6px;border:1px solid #475569;border-radius:4px;background:#0f172a;color:#e2e8f0;font-size:12px;text-align:center}
+.settings input:focus{outline:none;border-color:#38bdf8}
+.settings button{padding:4px 10px;border:none;border-radius:4px;background:#38bdf8;color:#0f172a;font-size:11px;font-weight:600;cursor:pointer}
+.settings button:hover{background:#7dd3fc}
+.hero{display:flex;align-items:center;justify-content:center;gap:20px;padding:20px 16px;background:linear-gradient(180deg,#1e293b 0%,#0f172a 100%)}
+.ring{position:relative;width:100px;height:100px}
+.ring svg{transform:rotate(-90deg)}
+.ring .bg{fill:none;stroke:#1e293b;stroke-width:8}
+.ring .fg{fill:none;stroke:#38bdf8;stroke-width:8;stroke-linecap:round;transition:stroke-dashoffset .5s}
+.ring .val{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:26px;font-weight:800;color:#38bdf8}
+.ring .val small{font-size:12px;color:#64748b;font-weight:400}
+.metrics{display:flex;flex-direction:column;gap:6px;min-width:140px}
+.metrics .row{display:flex;justify-content:space-between;font-size:13px}
+.metrics .row .lbl{color:#94a3b8}
+.metrics .row .val{font-weight:600;font-variant-numeric:tabular-nums}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:#334155;margin:0 16px;border-radius:8px;overflow:hidden}
+.stat-box{padding:14px 8px;text-align:center;background:#1e293b}
+.stat-box .num{font-size:20px;font-weight:700}
+.stat-box .lbl{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.stat-box.hit .num{color:#22c55e}
+.stat-box.miss .num{color:#f59e0b}
+.stat-box.tunnel .num{color:#38bdf8}
+.section{padding:12px 16px 4px}
+.section h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:8px}
+.list{max-height:220px;overflow-y:auto;padding:0 16px 12px;scrollbar-width:thin;scrollbar-color:#334155 transparent}
+.list::-webkit-scrollbar{width:4px}
+.list::-webkit-scrollbar-thumb{background:#475569;border-radius:4px}
+.item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:12px;transition:background .15s}
+.item:hover{background:#1e293b}
+.item .badge{font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;min-width:52px;text-align:center;flex-shrink:0}
+.badge.hit{background:#22c55e22;color:#22c55e}
+.badge.miss{background:#f59e0b22;color:#f59e0b}
+.badge.tunnel{background:#38bdf822;color:#38bdf8}
+.badge.denied{background:#ef444422;color:#ef4444}
+.badge.other{background:#64748b44;color:#94a3b8}
+.item .url{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e2e8f0}
+.item .url small{color:#64748b;font-size:10px}
+.item .ms{font-size:10px;color:#64748b;flex-shrink:0}
+.domain-item{display:flex;justify-content:space-between;padding:5px 8px;font-size:12px;border-radius:4px}
+.domain-item:hover{background:#1e293b}
+.domain-item .name{color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.domain-item .cnt{color:#94a3b8;flex-shrink:0}
+.domain-item .bar-wrap{width:60px;height:4px;background:#334155;border-radius:2px;margin-top:4px;overflow:hidden;flex-shrink:0}
+.domain-item .bar-fill{height:100%;background:#38bdf8;border-radius:2px;transition:width .5s}
+.status{text-align:center;padding:30px 16px;color:#94a3b8;font-size:13px}
+.status .spin{display:inline-block;width:24px;height:24px;border:3px solid #334155;border-top-color:#38bdf8;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error{text-align:center;padding:20px 16px}
+.error .msg{color:#f87171;font-size:13px;margin-bottom:10px}
+.error button{padding:6px 16px;border:none;border-radius:6px;background:#38bdf8;color:#0f172a;font-weight:600;cursor:pointer}
+.error button:hover{background:#7dd3fc}
+.footer{text-align:center;padding:8px;font-size:10px;color:#475569;border-top:1px solid #1e293b}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1 id="statusTitle" class="off">Squid Monitor</h1>
+  <div class="settings">
+    <label>Server</label>
+    <input id="serverInput" value="192.168.101.22:8080" placeholder="ip:port">
+    <button id="connectBtn">Connect</button>
+  </div>
+</div>
+
+<div id="loadingView" class="status">
+  <div class="spin"></div>
+  <div>Menghubungkan ke server...</div>
+</div>
+
+<div id="errorView" class="error" style="display:none">
+  <div class="msg" id="errorMsg">Tidak dapat terhubung</div>
+  <button id="retryBtn">Coba Lagi</button>
+</div>
+
+<div id="mainView" style="display:none">
+  <div class="hero">
+    <div class="ring">
+      <svg width="100" height="100" viewBox="0 0 100 100">
+        <circle class="bg" cx="50" cy="50" r="42"/>
+        <circle class="fg" id="hitRing" cx="50" cy="50" r="42" stroke-dasharray="264" stroke-dashoffset="264"/>
+      </svg>
+      <div class="val"><span id="ringPct">0</span><small>%</small></div>
+    </div>
+    <div class="metrics">
+      <div class="row"><span class="lbl">Total Requests</span><span class="val" id="totalReq">0</span></div>
+      <div class="row"><span class="lbl">Cache Size</span><span class="val" id="cacheSize">0 MB</span></div>
+      <div class="row"><span class="lbl">Uptime</span><span class="val" id="uptime">-</span></div>
+      <div class="row"><span class="lbl">Active Domains</span><span class="val" id="domainCount">0</span></div>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-box hit"><div class="num" id="hitsNum">0</div><div class="lbl">HITS</div></div>
+    <div class="stat-box miss"><div class="num" id="missesNum">0</div><div class="lbl">MISSES</div></div>
+    <div class="stat-box tunnel"><div class="num" id="tunnelsNum">0</div><div class="lbl">TUNNELS</div></div>
+  </div>
+
+  <div class="section"><h2>Recent Requests</h2></div>
+  <div class="list" id="recentList"></div>
+
+  <div class="section"><h2>Top Domains</h2></div>
+  <div class="list" id="domainList"></div>
+
+  <div class="footer">Squid Cache Monitor v1.0 &mdash; <span id="lastUpdate">-</span></div>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

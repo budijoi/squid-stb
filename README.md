@@ -24,6 +24,9 @@ Browser/App → Proxy (X96Mini:3128) → Squid Cache → Internet
 | File | Fungsi |
 |------|--------|
 | `install-squid.sh` | Auto-installer Squid dengan konfigurasi optimal |
+| `monitor/squid-monitor.py` | API backend untuk monitoring cache real-time |
+| `monitor/install-monitor.sh` | Install monitor sebagai systemd service |
+| `extension/` | Browser Extension (Chrome/Edge/Brave) untuk monitoring |
 | `README.md` | Dokumentasi ini |
 
 ---
@@ -183,6 +186,92 @@ sudo systemctl start squid
 | `WARNING BCP 177 violation` | IPv6 loopback tidak ada | Aman diabaikan |
 | Koneksi lambat di awal | Cache masih kosong | Biarkan beberapa saat |
 | Squid tidak listen di port | Firewall | `sudo ufw allow 3128/tcp` |
+
+---
+
+## Monitor Cache (Real-time Dashboard)
+
+Pantau kinerja Squid secara real-time melalui browser dengan **Squid Monitor API** + **Browser Extension**.
+
+### Arsitektur
+
+```
+Browser Extension (popup)  ←→  Monitor API (:8080)  ←→  Squid Access Log
+                                     ↓
+                              Statistik cache, hit ratio,
+                              request terbaru, top domains
+```
+
+### Install Monitor API di X96Mini
+
+```bash
+# Dari folder squid-stb hasil clone
+sudo bash monitor/install-monitor.sh
+```
+
+Atau via curl:
+
+```bash
+curl -sL https://raw.githubusercontent.com/budijoi/squid-stb/main/monitor/install-monitor.sh -o /tmp/install-monitor.sh
+sudo bash /tmp/install-monitor.sh
+```
+
+Script akan:
+- Copy `squid-monitor.py` ke `/usr/local/bin`
+- Buat systemd service `squid-monitor` (auto-start)
+- Buka port `8080` untuk API monitoring
+
+### API Endpoints
+
+| Endpoint | Deskripsi |
+|----------|-----------|
+| `GET /api/stats` | Statistik cache (total request, hits, misses, hit ratio, cache size, uptime) |
+| `GET /api/recent` | 30 request terbaru (waktu, method, URL, status cache, durasi) |
+| `GET /api/domains` | 40 domain paling sering diakses (total request + hits) |
+
+Uji coba dari X96Mini:
+
+```bash
+curl -s http://127.0.0.1:8080/api/stats | python3 -m json.tool
+```
+
+### Browser Extension (Chrome / Edge / Brave)
+
+Extension menampilkan dashboard langsung di browser — tanpa perlu SSH.
+
+| Fitur | Detail |
+|-------|--------|
+| Hit Ratio | Lingkaran progress real-time |
+| Statistik | Total request, cache hits, misses, tunnels |
+| Recent Requests | 30 request terbaru dengan status cache |
+| Top Domains | 40 domain paling sering diakses |
+| Auto-refresh | Update setiap 3 detik |
+
+#### Cara Install Extension
+
+1. Buka Chrome/Edge/Brave → `chrome://extensions`
+2. Aktifkan **"Developer mode"** (pojok kanan atas)
+3. Klik **"Load unpacked"**
+4. Pilih folder `extension/` dari repo ini
+5. Extension muncul di toolbar — klik icon untuk membuka
+
+#### Konfigurasi
+
+Di pojok kanan popup, masukkan alamat server monitor:
+`192.168.101.22:8080`
+
+Klik **Connect**. Dashboard akan langsung muncul.
+
+### File Monitor & Extension
+
+| File | Fungsi |
+|------|--------|
+| `monitor/squid-monitor.py` | Backend API — baca access.log & sajikan JSON |
+| `monitor/install-monitor.sh` | Installer → systemd service `squid-monitor` |
+| `extension/manifest.json` | Chrome extension manifest v3 |
+| `extension/popup.html` | UI popup dashboard |
+| `extension/popup.js` | Logic fetch API & render grafik |
+| `extension/icons/` | Icon 16px, 48px, 128px |
 
 ---
 

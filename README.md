@@ -1,6 +1,8 @@
 # Squid Caching Proxy untuk STB (X96Mini / Armbian)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![OS: ARMBIAN](https://img.shields.io/badge/OS-ARMBIAN-blue.svg)](OS)
+[![STB: B860H](https://img.shields.io/badge/STB-B860H-red.svg)](STB)
+[![STB: X96MINI](https://img.shields.io/badge/STB-X96MINI-orange.svg)](STB)
 
 Jadikan STB Android TV box (X96Mini, X96Air, dll) sebagai **caching proxy server**. Semua request web dari perangkat di rumah akan melewati Squid — halaman yang sudah dikunjungi akan di-cache, kunjungan berikutnya jadi **jauh lebih cepat**.
 
